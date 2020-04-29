@@ -15,6 +15,144 @@ Parameters:
 
 Resources: 
 
+  # Creates the config file for CloudWatch agent
+  CloudWatchAgentConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: CloudWatchAgentConfig
+      Type: String
+      Value: | 
+        {
+          "agent": {
+            "metrics_collection_interval": 10,
+            "logfile": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log"
+          },
+          "metrics": {
+            "metrics_collected": {
+              "cpu": {
+                "resources": [
+                  "*"
+                ],
+                "measurement": [
+                  {"name": "cpu_usage_idle", "rename": "CPU_USAGE_IDLE", "unit": "Percent"},
+                  {"name": "cpu_usage_nice", "unit": "Percent"},
+                  "cpu_usage_guest"
+                ],
+                "totalcpu": false,
+                "metrics_collection_interval": 10,
+                "append_dimensions": {
+                  "customized_dimension_key_1": "customized_dimension_value_1",
+                  "customized_dimension_key_2": "customized_dimension_value_2"
+                }
+              },
+              "disk": {
+                "resources": [
+                  "/",
+                  "/tmp"
+                ],
+                "measurement": [
+                  {"name": "free", "rename": "DISK_FREE", "unit": "Gigabytes"},
+                  "total",
+                  "used"
+                ],
+                  "ignore_file_system_types": [
+                  "sysfs", "devtmpfs"
+                ],
+                "metrics_collection_interval": 60,
+                "append_dimensions": {
+                  "customized_dimension_key_3": "customized_dimension_value_3",
+                  "customized_dimension_key_4": "customized_dimension_value_4"
+                }
+              },
+              "diskio": {
+                "resources": [
+                  "*"
+                ],
+                "measurement": [
+                  "reads",
+                  "writes",
+                  "read_time",
+                  "write_time",
+                  "io_time"
+                ],
+                "metrics_collection_interval": 60
+              },
+              "swap": {
+                "measurement": [
+                  "swap_used",
+                  "swap_free",
+                  "swap_used_percent"
+                ]
+              },
+              "mem": {
+                "measurement": [
+                  "mem_used",
+                  "mem_cached",
+                  "mem_total"
+                ],
+                "metrics_collection_interval": 1
+              },
+              "net": {
+                "resources": [
+                  "eth0"
+                ],
+                "measurement": [
+                  "bytes_sent",
+                  "bytes_recv",
+                  "drop_in",
+                  "drop_out"
+                ]
+              },
+              "netstat": {
+                "measurement": [
+                  "tcp_established",
+                  "tcp_syn_sent",
+                  "tcp_close"
+                ],
+                "metrics_collection_interval": 60
+              },
+              "processes": {
+                "measurement": [
+                  "running",
+                  "sleeping",
+                  "dead"
+                ]
+              }
+            },
+            "append_dimensions": {
+              "ImageId": "${aws:ImageId}",
+              "InstanceId": "${aws:InstanceId}",
+              "InstanceType": "${aws:InstanceType}",
+              "AutoScalingGroupName": "${aws:AutoScalingGroupName}"
+            },
+            "aggregation_dimensions" : [["ImageId"], ["InstanceId", "InstanceType"], ["d1"],[]],
+            "force_flush_interval" : 30
+          },
+          "logs": {
+            "logs_collected": {
+              "files": {
+                "collect_list": [
+                  {
+                    "file_path": "/var/log/www/error/*",
+                    "log_group_name": "apache/error",
+                    "log_stream_name": "[{instance_id}]",
+                    "timezone": "UTC"
+                  },
+                  {
+                    "file_path": "/var/log/www/access/*",
+                    "log_group_name": "apache/access",
+                    "log_stream_name": "[{instance_id}]",
+                    "timezone": "UTC"
+                  }
+                ]
+              }
+            },
+            "log_stream_name": "[{instance_id}]",
+            "force_flush_interval" : 15
+          }
+        }
+      Description: SSM Parameter for configuring CloudWatch Agent.
+
   # Creates a security group controlling access to the EC2 instance.
   Ec2CloudWatchSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -56,20 +194,29 @@ Resources:
     Properties:
       Path: /
       Roles:
-        - !Ref Ec2CloudWatchRole 
+        - !Ref Ec2CloudWatchRole
 
   # Creates the EC2 instance.
   Ec2CloudWatchInstance:
     Type: AWS::EC2::Instance
-    # Metadata:
-    #   AWS::CloudFormation::Init: 
-    #     config: 
-    #       commands:
-    #         001CreateRepo:
-    #           command: !Sub | # ugly - need to fix
-    #             touch ;
-    #           cwd: "~"
-    #           ignoreErrors: "false"
+    Metadata:
+      AWS::CloudFormation::Init: 
+        config: 
+          commands:
+            001UpdateOS:
+              command: |
+                sudo yum update -y
+              cwd: "~"
+              ignoreErrors: "false"
+            002InstallPHPApache:
+              command: |
+                sudo amazon-linux-extras install -y php7.2;
+                sudo yum install -y httpd;
+                sudo systemctl start httpd;
+                sudo systemctl enable httpd;
+                sudo systemctl is-enabled httpd;
+              cwd: "~"
+              ignoreErrors: "false"
     Properties:
         ImageId: !Ref Image
         KeyName: !Ref PemKey
@@ -88,3 +235,46 @@ Resources:
                   --stack ${AWS::StackName} \
                   --resource Ec2CloudWatchInstance \
                   --region ${AWS::Region}
+  
+  # Creates association which is reponsible for running CloudWatch agent install.
+  CloudWatchAgentInstallAssociation:
+    Type: AWS::SSM::Association
+    Properties: 
+      AssociationName: CloudWatchAgentInstall
+      Name: AWS-ConfigureAWSPackage
+      Parameters:
+        action: 
+          - Install
+        installationType: 
+          - Uninstall and reinstall
+        name: 
+          - AmazonCloudWatchAgent
+        version: 
+          - latest
+      Targets:
+        - Key: InstanceIds
+          Values:
+          - Ref: Ec2CloudWatchInstance
+
+  # Creates association which is reponsible for running CloudWatch agent install.
+  CloudWatchAgentConfigAssociation:
+    Type: AWS::SSM::Association
+    DependsOn : CloudWatchAgentInstallAssociation
+    Properties: 
+      AssociationName: CloudWatchAgentConfig
+      Name: AmazonCloudWatch-ManageAgent
+      Parameters:
+        action: 
+          - configure
+        mode: 
+          - ec2
+        optionalConfigurationSource: 
+          - ssm
+        optionalConfigurationLocation: 
+          - CloudWatchAgentConfig
+        optionalRestart:
+          - "yes"
+      Targets:
+        - Key: InstanceIds
+          Values:
+          - Ref: Ec2CloudWatchInstance
