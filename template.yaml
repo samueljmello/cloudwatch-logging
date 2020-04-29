@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Template for creating EC2 instances reporting to custom LogGroups.
+
+Parameters:
+  MyIp:
+    Type: String
+  PemKey:
+    Type: String
+  InstanceType:
+    Type: String
+    Default: t2.micro
+  Image:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0323c3dd2da7fb37d
+
+Resources: 
+
+  # Creates a security group controlling access to the EC2 instance.
+  Ec2CloudWatchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows SSH & Web
+      SecurityGroupIngress:
+      - CidrIp: !Sub "${MyIp}/32"
+        Description: Allow to home
+        IpProtocol: Tcp
+        FromPort: 22
+        ToPort: 22
+      - CidrIp: !Sub "${MyIp}/32"
+        Description: Allow web interface
+        IpProtocol: Tcp
+        FromPort: 80
+        ToPort: 80
+
+  # Creates a role for the EC2 instance that the instance profile will reference.
+  Ec2CloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  # Creates the instance profile for the EC2 instance to use.
+  Ec2CloudWatchInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref Ec2CloudWatchRole 
+
+  # Creates the EC2 instance.
+  Ec2CloudWatchInstance:
+    Type: AWS::EC2::Instance
+    # Metadata:
+    #   AWS::CloudFormation::Init: 
+    #     config: 
+    #       commands:
+    #         001CreateRepo:
+    #           command: !Sub | # ugly - need to fix
+    #             touch ;
+    #           cwd: "~"
+    #           ignoreErrors: "false"
+    Properties:
+        ImageId: !Ref Image
+        KeyName: !Ref PemKey
+        InstanceType: !Ref InstanceType
+        SecurityGroupIds:
+        - !GetAtt Ec2CloudWatchSecurityGroup.GroupId
+        IamInstanceProfile: !Ref Ec2CloudWatchInstanceProfile
+        Tags:
+          - Key: Name
+            Value: !Ref AWS::StackName
+        UserData:
+          Fn::Base64:
+            !Sub | # basic script for performing cfn-init
+                #!/bin/bash -ex
+                /opt/aws/bin/cfn-init -v \
+                  --stack ${AWS::StackName} \
+                  --resource Ec2CloudWatchInstance \
+                  --region ${AWS::Region}
