@@ -1,7 +1,9 @@
 # Cloudwatch Logging
 Within CloudWatch exists a feature called LogGroups which, when combined with CloudWatch Agent, can pipe logs to custom groups, allowing for a single-pane-of-glass for log analysis and alerting.
 
-This POC creates the following resources in order to demo the functionality:
+This POC creates the resources in order to demo the functionality. The architecture is as follows:
+
+![deployed architecture and future state](./architecture.png)
 
 1. Security Group provisioned in default VPC allowing port 22 and 80 for a provided IP address.
 2. IAM Role using two managed IAM policies: 
@@ -16,18 +18,17 @@ This POC creates the following resources in order to demo the functionality:
    3. POST
    4. DELETE
    5. 404
-   6. OTHER ERROR
 5. CloudWatch Dashboard for Apache
    1. Request Type Counts
-   2. Errors
+   2. Error Graph
 6. EC2 Instance Profile using the aforementioned IAM Role.
 7. EC2 Instance using Security Group and IAM Instance Profile.
 8. Systems Manager Parameter:
    1. CloudWatch vonfiguration file.
 9.  Systems Manager State Manager Document:
-   2. Provisions CloudWatch Agent
-   3. Installs & Configures HTTPD
-   4. Configures CloudWatch Agent
+    1.  Provisions CloudWatch Agent
+    2.  Installs & Configures HTTPD
+    3.  Configures CloudWatch Agent
 10. Systems Manager Association for instance to document.
 
 ---
@@ -92,6 +93,10 @@ Script assumes port 80.
 ---
 
 ## Dashboards
-As part of this template, a CloudWatch dashboard is created to visualize metric analysis of Apache logs. Visit the following URL to see the dashboard and widgets:
+As part of this template, a CloudWatch dashboard is created to visualize metric analysis of Apache logs. 
+
+![example of CloudWatch dashboard](./dashboard-example.png)
+
+Visit the following URL to see the dashboard and widgets:
 
 https://console.aws.amazon.com/cloudwatch/home?dashboards:name=Apache#dashboards:name=Apache
