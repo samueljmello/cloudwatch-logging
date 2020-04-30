@@ -1,3 +1,4 @@
+# Set-up template
 AWSTemplateFormatVersion: 2010-09-09
 Description: Template for creating EC2 instances reporting to custom LogGroups.
 Parameters:
@@ -11,13 +12,192 @@ Parameters:
   Image:
     Type: AWS::EC2::Image::Id
     Default: ami-0323c3dd2da7fb37d
+
+# Resource creation
 Resources: 
 
-  # Creates the config file for CloudWatch agent
+  # Creates a security group controlling access to the EC2 instance.
+  Ec2CloudWatchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows SSH & Web
+      SecurityGroupIngress:
+      - CidrIp: !Sub "${MyIp}/32"
+        Description: Allow to home
+        IpProtocol: Tcp
+        FromPort: 22
+        ToPort: 22
+      - CidrIp: !Sub "${MyIp}/32"
+        Description: Allow web interface
+        IpProtocol: Tcp
+        FromPort: 80
+        ToPort: 80
+
+
+  # Creates a role for the EC2 instance that the instance profile will reference.
+  Ec2CloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  # Creates the instance profile for the EC2 instance to use.
+  Ec2CloudWatchInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref Ec2CloudWatchRole
+
+
+  # Creates the EC2 instance.
+  Ec2CloudWatchInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref Image
+      KeyName: !Ref PemKey
+      InstanceType: !Ref InstanceType
+      SecurityGroupIds:
+        - !GetAtt Ec2CloudWatchSecurityGroup.GroupId
+      IamInstanceProfile: !Ref Ec2CloudWatchInstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  
+  # Create custom log groups
+  CloudWatchApacheErrorLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: apache/error
+      RetentionInDays: 14
+  CloudWatchApacheAccessLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: apache/access
+      RetentionInDays: 14
+
+  
+  # Create metric filters for graphing
+  CloudWatchApacheAccessGetMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.method = "GET" }'
+      LogGroupName: apache/access
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: GET Requests
+          MetricValue: '1'
+  CloudWatchApacheAccessPutMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.method = "PUT" }'
+      LogGroupName: apache/access
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: PUT Requests
+          MetricValue: '1'
+  CloudWatchApacheAccessPostMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.method = "POST" }'
+      LogGroupName: apache/access
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: POST Requests
+          MetricValue: '1'
+  CloudWatchApacheAccessDeleteMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.method = "DELETE" }'
+      LogGroupName: apache/access
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: DELETE Requests
+          MetricValue: '1'
+  CloudWatchApacheError404MetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.function = "[autoindex:error]" }'
+      LogGroupName: apache/error
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: '404 Errors'
+          MetricValue: '1'
+  CloudWatchApacheErrorOtherMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.function != "[autoindex:error]" }'
+      LogGroupName: apache/error
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: 'All Other Errors'
+          MetricValue: "$.function"
+
+
+  # Creates dashboards to display Apache data
+  CloudWatchApacheDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties: 
+      DashboardName: Apache
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+              {
+                  "type": "metric",
+                  "x": 0,
+                  "y": 3,
+                  "width": 24,
+                  "height": 6,
+                  "properties": {
+                      "metrics": [
+                          [ "Apache", "404 Errors", { "color": "#d62728", "label": "404" } ]
+                      ],
+                      "view": "timeSeries",
+                      "stacked": true,
+                      "region": "${AWS::Region}",
+                      "title": "Errors",
+                      "stat": "Sum",
+                      "period": 10
+                  }
+              },
+              {
+                  "type": "metric",
+                  "x": 0,
+                  "y": 0,
+                  "width": 24,
+                  "height": 3,
+                  "properties": {
+                      "metrics": [
+                          [ "Apache", "GET Requests", { "label": "GET" } ],
+                          [ ".", "PUT Requests", { "label": "PUT" } ],
+                          [ ".", "POST Requests", { "label": "POST" } ],
+                          [ ".", "DELETE Requests", { "label": "DELETE" } ]
+                      ],
+                      "view": "singleValue",
+                      "region": "${AWS::Region}",
+                      "period": 86400,
+                      "stat": "Sum",
+                      "title": "Request Types Today"
+                  }
+              }
+          ]
+        }
+
+  # Creates the config file for CloudWatch agent as an SSM parameter
   CloudWatchAgentConfigParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: CloudWatchAgentConfig
       Type: String
       Value: | 
         {
@@ -152,139 +332,14 @@ Resources:
       Description: SSM Parameter for configuring CloudWatch Agent.
 
 
-  # Creates a security group controlling access to the EC2 instance.
-  Ec2CloudWatchSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Allows SSH & Web
-      SecurityGroupIngress:
-      - CidrIp: !Sub "${MyIp}/32"
-        Description: Allow to home
-        IpProtocol: Tcp
-        FromPort: 22
-        ToPort: 22
-      - CidrIp: !Sub "${MyIp}/32"
-        Description: Allow web interface
-        IpProtocol: Tcp
-        FromPort: 80
-        ToPort: 80
-
-
-  # Creates a role for the EC2 instance that the instance profile will reference.
-  Ec2CloudWatchRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-              - ec2.amazonaws.com
-            Action: sts:AssumeRole
-      Path: /
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
-        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-
-  # Creates the instance profile for the EC2 instance to use.
-  Ec2CloudWatchInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Path: /
-      Roles:
-        - !Ref Ec2CloudWatchRole
-
-  # Creates a service role for SSM document automation execution (required)
-  CloudWatchAutomationServiceRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - ssm.amazonaws.com
-            - ec2.amazonaws.com
-          Action: sts:AssumeRole
-      Path: "/"
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole
-
-
-  # Creates the EC2 instance.
-  Ec2CloudWatchInstance:
-    Type: AWS::EC2::Instance
-    Metadata:
-      AWS::CloudFormation::Init: 
-        config: 
-          commands:
-            001UpdateOS:
-              command: |
-                sudo yum update -y
-              cwd: "~"
-              ignoreErrors: "false"
-            002InstallPHPApache:
-              command: |
-                sudo amazon-linux-extras install -y php7.2;
-                sudo yum install -y httpd;
-                sudo systemctl start httpd;
-                sudo systemctl enable httpd;
-                sudo systemctl is-enabled httpd;
-              cwd: "~"
-              ignoreErrors: "false"
-            003ConfigureApache:
-              command: |
-                sudo cp -f /etc/httpd/conf/httpd.conf ~/httpd.back.conf
-                FILE="/etc/httpd/conf/httpd.conf";
-                ELOG='ErrorLog "logs\/error_log"';
-                ELOGREP='ErrorLog "\/var\/log\/www\/error\/error_log"';
-                ELOGFMT='ErrorLogFormat "{\\"time\\":\\"%{%usec_frac}t\\", \\"function\\" : \\"[%-m:%l]\\", \\"process\\" : \\"[pid%P]\\" ,\\"message\\" : \\"%M\\"}"';
-                CLOG='CustomLog "logs\/access_log" combined'
-                CLOGFMT='LogFormat "%h %l %u %t \\"%r\\" %>s %b" common';
-                CWLOG='CustomLog "\/var\/log\/www\/access\/access_log" cloudwatch';
-                CWLOGFMT='LogFormat "{ \\"time\\":\\"%{%Y-%m-%d}tT%{%T}t.%{msec_frac}tZ\\", \\"process\\":\\"%D\\", \\"filename\\":\\"%f\\", \\"remoteIP\\":\\"%a\\", \\"host\\":\\"%V\\", \\"request\\":\\"%U\\", \\"query\\":\\"%q\\",\\"method\\":\\"%m\\", \\"status\\":\\"%>s\\", \\"userAgent\\":\\"%{User-agent}i\\",\\"referer\\":\\"%{Referer}i\\"}" cloudwatch';
-                sed "s/${ELOG}/${ELOGREP}/g" ${FILE} |\
-                  sed "/${ELOGREP}/a ${ELOGFMT}" |\
-                  sed "s/${CLOGFMT}/${CWLOGFMT}/g" |\
-                  sed "/${CLOG}/a ${CWLOG}" |\
-                  sudo dd of=${FILE};
-                sudo mkdir -p /var/log/www/error;
-                sudo mkdir -p /var/log/www/access;
-                sudo systemctl restart httpd;
-              cwd: "~"
-              ignoreErrors: "false"
-    Properties:
-        ImageId: !Ref Image
-        KeyName: !Ref PemKey
-        InstanceType: !Ref InstanceType
-        SecurityGroupIds:
-          - !GetAtt Ec2CloudWatchSecurityGroup.GroupId
-        IamInstanceProfile: !Ref Ec2CloudWatchInstanceProfile
-        Tags:
-          - Key: Name
-            Value: !Ref AWS::StackName
-        UserData:
-          Fn::Base64:
-            !Sub | # basic script for performing cfn-init
-                #!/bin/bash -ex
-                /opt/aws/bin/cfn-init -v \
-                  --stack ${AWS::StackName} \
-                  --resource Ec2CloudWatchInstance \
-                  --region ${AWS::Region}
-
-
-  # Creates an automation document for installing & configuring CloudWatch agent.
-  CloudWatchAgentAutomation:
+  # Creates an automation document for installing & configuring the CloudWatch agent and Apache.
+  CloudWatchCustomLoggingAutomation:
     Type: AWS::SSM::Document
     Properties: 
-      Name: Custom-CloudWatchAgentInstallAndConfig
       DocumentType: Command
       Content: 
         schemaVersion: "2.2"
-        assumeRole: !GetAtt CloudWatchAutomationServiceRole.Arn
-        description: "Automates the installation and configuration of the CloudWatch agent."
+        description: "Automates the installation & configuration of the CloudWatch agent and Apache."
         mainSteps:
           - name: InstallCloudWatch
             description: Installs the CloudWatch agent using the document 'AWS-ConfigureAWSPackage'.
@@ -298,6 +353,36 @@ Resources:
                 installationType: Uninstall and reinstall
                 name: AmazonCloudWatchAgent
                 version: latest
+          - name: InstallAndConfigureApache
+            description: Installs Apache and then configures logging for CloudWatch 
+            action: aws:runShellScript
+            maxAttempts: 5
+            inputs:
+              runCommand:
+                - sudo yum update -y
+                - sudo amazon-linux-extras install -y php7.2
+                - sudo yum install -y httpd
+                - sudo systemctl start httpd
+                - sudo systemctl enable httpd
+                - sudo systemctl is-enabled httpd
+                - sudo cp -f /etc/httpd/conf/httpd.conf ~/httpd.back.conf
+                - | 
+                  FILE="/etc/httpd/conf/httpd.conf";
+                  ELOG='ErrorLog "logs\/error_log"';
+                  ELOGREP='ErrorLog "\/var\/log\/www\/error\/error_log"';
+                  ELOGFMT='ErrorLogFormat "{\\"time\\":\\"%{%usec_frac}t\\", \\"function\\" : \\"[%-m:%l]\\", \\"process\\" : \\"[pid%P]\\" ,\\"message\\" : \\"%M\\"}"';
+                  CLOG='CustomLog "logs\/access_log" combined'
+                  CLOGFMT='LogFormat "%h %l %u %t \\"%r\\" %>s %b" common';
+                  CWLOG='CustomLog "\/var\/log\/www\/access\/access_log" cloudwatch';
+                  CWLOGFMT='LogFormat "{ \\"time\\":\\"%{%Y-%m-%d}tT%{%T}t.%{msec_frac}tZ\\", \\"process\\":\\"%D\\", \\"filename\\":\\"%f\\", \\"remoteIP\\":\\"%a\\", \\"host\\":\\"%V\\", \\"request\\":\\"%U\\", \\"query\\":\\"%q\\",\\"method\\":\\"%m\\", \\"status\\":\\"%>s\\", \\"userAgent\\":\\"%{User-agent}i\\",\\"referer\\":\\"%{Referer}i\\"}" cloudwatch';
+                  sed "s/${ELOG}/${ELOGREP}/g" ${FILE} |\
+                    sed "/${ELOGREP}/a ${ELOGFMT}" |\
+                    sed "s/${CLOGFMT}/${CWLOGFMT}/g" |\
+                    sed "/${CLOG}/a ${CWLOG}" |\
+                    sudo dd of=${FILE};
+                - sudo mkdir -p /var/log/www/error
+                - sudo mkdir -p /var/log/www/access
+                - sudo systemctl restart httpd
           - name: ConfigureCloudWatch
             description: Configures the CloudWatch agent using the document 'AmazonCloudWatch-ManageAgent'.
             action: aws:runDocument
@@ -309,16 +394,15 @@ Resources:
                 action: configure
                 mode: ec2
                 optionalConfigurationSource: ssm
-                optionalConfigurationLocation: CloudWatchAgentConfig
+                optionalConfigurationLocation: !Ref CloudWatchAgentConfigParameter
                 optionalRestart: "yes" # DO NOT REMOVE QUOTES
   
-                
+
   # Creates association which is reponsible for running CloudWatch agent install.
   CloudWatchAgentInstallAssociation:
     Type: AWS::SSM::Association
     Properties: 
-      AssociationName: CloudWatchAgentInstallAndConfigure
-      Name: !Ref CloudWatchAgentAutomation
+      Name: !Ref CloudWatchCustomLoggingAutomation
       Targets: 
         - Key: InstanceIds
           Values: 

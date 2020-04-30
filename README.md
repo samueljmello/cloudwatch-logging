@@ -7,12 +7,30 @@ This POC creates the following resources in order to demo the functionality:
 2. IAM Role using two managed IAM policies: 
    1. CloudWatchAgentServerPolicy
    2. AmazonSSMManagedInstanceCore
-3. EC2 Instance Profile using the aforementioned IAM Role.
-4. EC2 Instance using Security Group and IAM Instance Profile.
-   1. Provisioned with Apache & configured for custom logging.
-5. Systems Manager State Manager Associations:
-   1. Provisioning CloudWatch Agent
-   2. Configuring CloudWatch Agent
+3. CloudWatch LogGroups:
+   1. apache/access
+   2. apache/error
+4. CloudWatch MetricFilters:
+   1. GET
+   2. PUT
+   3. POST
+   4. DELETE
+   5. 404
+   6. OTHER ERROR
+5. CloudWatch Dashboard for Apache
+   1. Request Type Counts
+   2. Errors
+6. EC2 Instance Profile using the aforementioned IAM Role.
+7. EC2 Instance using Security Group and IAM Instance Profile.
+8. Systems Manager Parameter:
+   1. CloudWatch vonfiguration file.
+9.  Systems Manager State Manager Document:
+   2. Provisions CloudWatch Agent
+   3. Installs & Configures HTTPD
+   4. Configures CloudWatch Agent
+10. Systems Manager Association for instance to document.
+
+---
 
 ## Deploying
 The process of deploying uses the AWS CLI with the following commands.
@@ -40,13 +58,7 @@ aws cloudformation deploy \
 
 For both commands, you must replace the values above with values related to your environment. For parameter overrides, reference the template file "parameters" definition.
 
-## Post-Deployment
-Because two "associations" are used, a race condition exists. You will need to:
-
-1. Visit [AWS Systems Manager State Manager](https://console.aws.amazon.com/systems-manager/state-manager) and validate the 'CloudWatchAgentConfig' association successfully completed.
-2. If it is in a failed status:
-   1. Click the assoication ID to open the association.
-   2. Click "apply association now" to execute the comand, then confirm when prompted.
+---
 
 ## Custom Deployment
 Here are the commands I used for copy & paste purposes (there are no sensitive values in here, and potentially sensitive values were ref'd by environment variables that I exported prior to running these).
@@ -63,3 +75,23 @@ Package:
 
 Deploy:
 ```aws cloudformation deploy --template-file "output/plan" --stack-name "cloudwatch-logging" --capabilities CAPABILITY_IAM --parameter-overrides "MyIp=${AWS_MY_IP}" "PemKey=${AWS_EC2_KEY}"```
+
+---
+
+## Generating Traffic
+After you've created the instance you can generate some traffic by running the ```generate-traffic.sh``` bash script included in this repository. This will randomly choose between GET, PUT, POST, and DELETE methods while constructing a Curl request to the host name you provide. 
+
+It will also determine whether to make the request a 404 or not by requestig a path that doesn't exist. The point of this is to generate traffic for graphing examples.
+
+Example:
+
+```./generate-traffic.sh -h "ec2-ip.compute-1.amazonaws.com"```
+
+Script assumes port 80.
+
+---
+
+## Dashboards
+As part of this template, a CloudWatch dashboard is created to visualize metric analysis of Apache logs. Visit the following URL to see the dashboard and widgets:
+
+https://console.aws.amazon.com/cloudwatch/home?dashboards:name=Apache#dashboards:name=Apache
