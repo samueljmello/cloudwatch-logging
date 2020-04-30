@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: Template for creating EC2 instances reporting to custom LogGroups.
-
 Parameters:
   MyIp:
     Type: String
@@ -12,7 +11,6 @@ Parameters:
   Image:
     Type: AWS::EC2::Image::Id
     Default: ami-0323c3dd2da7fb37d
-
 Resources: 
 
   # Creates the config file for CloudWatch agent
@@ -153,6 +151,7 @@ Resources:
         }
       Description: SSM Parameter for configuring CloudWatch Agent.
 
+
   # Creates a security group controlling access to the EC2 instance.
   Ec2CloudWatchSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -170,6 +169,7 @@ Resources:
         FromPort: 80
         ToPort: 80
 
+
   # Creates a role for the EC2 instance that the instance profile will reference.
   Ec2CloudWatchRole:
     Type: AWS::IAM::Role
@@ -181,8 +181,7 @@ Resources:
             Principal:
               Service:
               - ec2.amazonaws.com
-            Action:
-              - 'sts:AssumeRole'
+            Action: sts:AssumeRole
       Path: /
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
@@ -195,6 +194,24 @@ Resources:
       Path: /
       Roles:
         - !Ref Ec2CloudWatchRole
+
+  # Creates a service role for SSM document automation execution (required)
+  CloudWatchAutomationServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ssm.amazonaws.com
+            - ec2.amazonaws.com
+          Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole
+
 
   # Creates the EC2 instance.
   Ec2CloudWatchInstance:
@@ -217,7 +234,7 @@ Resources:
                 sudo systemctl is-enabled httpd;
               cwd: "~"
               ignoreErrors: "false"
-            002ConfigureApache:
+            003ConfigureApache:
               command: |
                 sudo cp -f /etc/httpd/conf/httpd.conf ~/httpd.back.conf
                 FILE="/etc/httpd/conf/httpd.conf";
@@ -243,7 +260,7 @@ Resources:
         KeyName: !Ref PemKey
         InstanceType: !Ref InstanceType
         SecurityGroupIds:
-        - !GetAtt Ec2CloudWatchSecurityGroup.GroupId
+          - !GetAtt Ec2CloudWatchSecurityGroup.GroupId
         IamInstanceProfile: !Ref Ec2CloudWatchInstanceProfile
         Tags:
           - Key: Name
@@ -256,46 +273,56 @@ Resources:
                   --stack ${AWS::StackName} \
                   --resource Ec2CloudWatchInstance \
                   --region ${AWS::Region}
+
+
+  # Creates an automation document for installing & configuring CloudWatch agent.
+  CloudWatchAgentAutomation:
+    Type: AWS::SSM::Document
+    Properties: 
+      Name: Custom-CloudWatchAgentInstallAndConfig
+      DocumentType: Automation
+      Content: 
+        schemaVersion: "0.3"
+        assumeRole: !GetAtt CloudWatchAutomationServiceRole.Arn
+        description: "Automates the installation and configuration of the CloudWatch agent."
+        mainSteps:
+          - name: InstallCloudWatch
+            description: Installs the CloudWatch agent using the document 'AWS-ConfigureAWSPackage'.
+            action: aws:runCommand
+            maxAttempts: 5
+            inputs:
+              DocumentName: AWS-ConfigureAWSPackage
+              Parameters:
+                action: 
+                  - Install
+                installationType: 
+                  - Uninstall and reinstall
+                name: 
+                  - AmazonCloudWatchAgent
+                version: 
+                  - latest
+          - name: ConfigureCloudWatch
+            description: Configures the CloudWatch agent using the document 'AmazonCloudWatch-ManageAgent'.
+            action: aws:runCommand
+            maxAttempts: 5
+            inputs:
+              DocumentName: AmazonCloudWatch-ManageAgent
+              Parameters:
+                action: 
+                  - configure
+                mode: 
+                  - ec2
+                optionalConfigurationSource: 
+                  - ssm
+                optionalConfigurationLocation: 
+                  - CloudWatchAgentConfig
+                optionalRestart:
+                  - "yes"
   
   # Creates association which is reponsible for running CloudWatch agent install.
-  CloudWatchAgentInstallAssociation:
-    Type: AWS::SSM::Association
-    Properties: 
-      AssociationName: CloudWatchAgentInstall
-      Name: AWS-ConfigureAWSPackage
-      Parameters:
-        action: 
-          - Install
-        installationType: 
-          - Uninstall and reinstall
-        name: 
-          - AmazonCloudWatchAgent
-        version: 
-          - latest
-      Targets:
-        - Key: InstanceIds
-          Values:
-          - Ref: Ec2CloudWatchInstance
-
-  # Creates association which is reponsible for running CloudWatch agent install.
-  CloudWatchAgentConfigAssociation:
-    Type: AWS::SSM::Association
-    DependsOn : CloudWatchAgentInstallAssociation
-    Properties: 
-      AssociationName: CloudWatchAgentConfig
-      Name: AmazonCloudWatch-ManageAgent
-      Parameters:
-        action: 
-          - configure
-        mode: 
-          - ec2
-        optionalConfigurationSource: 
-          - ssm
-        optionalConfigurationLocation: 
-          - CloudWatchAgentConfig
-        optionalRestart:
-          - "yes"
-      Targets:
-        - Key: InstanceIds
-          Values:
-          - Ref: Ec2CloudWatchInstance
+  # CloudWatchAgentInstallAssociation:
+  #   Type: AWS::SSM::Association
+  #   Properties: 
+  #     AssociationName: CloudWatchAgentInstallAndConfigure
+  #     Name: !Ref CloudWatchAgentAutomation
+  #     InstanceId: !Ref Ec2CloudWatchInstance
