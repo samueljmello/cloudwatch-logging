@@ -93,7 +93,7 @@ Resources:
     Type: AWS::Logs::MetricFilter
     Properties: 
       FilterPattern: '{ $.method = "GET" }'
-      LogGroupName: apache/access
+      LogGroupName: !Ref CloudWatchApacheAccessLogs
       MetricTransformations: 
         - MetricNamespace: Apache
           MetricName: GET Requests
@@ -102,7 +102,7 @@ Resources:
     Type: AWS::Logs::MetricFilter
     Properties: 
       FilterPattern: '{ $.method = "PUT" }'
-      LogGroupName: apache/access
+      LogGroupName: !Ref CloudWatchApacheAccessLogs
       MetricTransformations: 
         - MetricNamespace: Apache
           MetricName: PUT Requests
@@ -111,7 +111,7 @@ Resources:
     Type: AWS::Logs::MetricFilter
     Properties: 
       FilterPattern: '{ $.method = "POST" }'
-      LogGroupName: apache/access
+      LogGroupName: !Ref CloudWatchApacheAccessLogs
       MetricTransformations: 
         - MetricNamespace: Apache
           MetricName: POST Requests
@@ -120,7 +120,7 @@ Resources:
     Type: AWS::Logs::MetricFilter
     Properties: 
       FilterPattern: '{ $.method = "DELETE" }'
-      LogGroupName: apache/access
+      LogGroupName: !Ref CloudWatchApacheAccessLogs
       MetricTransformations: 
         - MetricNamespace: Apache
           MetricName: DELETE Requests
@@ -129,7 +129,7 @@ Resources:
     Type: AWS::Logs::MetricFilter
     Properties: 
       FilterPattern: '{ $.function = "[autoindex:error]" }'
-      LogGroupName: apache/error
+      LogGroupName: !Ref CloudWatchApacheErrorLogs
       MetricTransformations: 
         - MetricNamespace: Apache
           MetricName: '404 Errors'
@@ -138,11 +138,11 @@ Resources:
     Type: AWS::Logs::MetricFilter
     Properties: 
       FilterPattern: '{ $.function != "[autoindex:error]" }'
-      LogGroupName: apache/error
+      LogGroupName: !Ref CloudWatchApacheErrorLogs
       MetricTransformations: 
         - MetricNamespace: Apache
           MetricName: 'All Other Errors'
-          MetricValue: "$.function"
+          MetricValue: '1'
 
 
   # Creates dashboards to display Apache data
@@ -153,44 +153,157 @@ Resources:
       DashboardBody: !Sub |
         {
           "widgets": [
-              {
-                  "type": "metric",
-                  "x": 0,
-                  "y": 3,
-                  "width": 24,
-                  "height": 6,
-                  "properties": {
-                      "metrics": [
-                          [ "Apache", "404 Errors", { "color": "#d62728", "label": "404" } ]
-                      ],
-                      "view": "timeSeries",
-                      "stacked": true,
-                      "region": "${AWS::Region}",
-                      "title": "Errors",
-                      "stat": "Sum",
-                      "period": 10
-                  }
-              },
-              {
-                  "type": "metric",
-                  "x": 0,
-                  "y": 0,
-                  "width": 24,
-                  "height": 3,
-                  "properties": {
-                      "metrics": [
-                          [ "Apache", "GET Requests", { "label": "GET" } ],
-                          [ ".", "PUT Requests", { "label": "PUT" } ],
-                          [ ".", "POST Requests", { "label": "POST" } ],
-                          [ ".", "DELETE Requests", { "label": "DELETE" } ]
-                      ],
-                      "view": "singleValue",
-                      "region": "${AWS::Region}",
-                      "period": 86400,
-                      "stat": "Sum",
-                      "title": "Request Types Today"
-                  }
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 21,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [
+                    "Apache",
+                    "404 Errors",
+                    {
+                      "color": "#d62728",
+                      "label": "404"
+                    }
+                  ]
+                ],
+                "view": "timeSeries",
+                "stacked": true,
+                "region": "${AWS::Region}",
+                "title": "Errors Over Time",
+                "stat": "Sum",
+                "period": 10
               }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 9,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [
+                    "Apache",
+                    "GET Requests",
+                    {
+                      "label": "GET"
+                    }
+                  ],
+                  [
+                    ".",
+                    "PUT Requests",
+                    {
+                      "label": "PUT"
+                    }
+                  ],
+                  [
+                    ".",
+                    "POST Requests",
+                    {
+                      "label": "POST"
+                    }
+                  ],
+                  [
+                    ".",
+                    "DELETE Requests",
+                    {
+                      "label": "DELETE"
+                    }
+                  ]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "period": 86400,
+                "stat": "Sum",
+                "title": "Request Types Today"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 9,
+              "y": 0,
+              "width": 15,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [
+                    "Apache",
+                    "GET Requests",
+                    {
+                      "label": "GET"
+                    }
+                  ],
+                  [
+                    ".",
+                    "PUT Requests",
+                    {
+                      "label": "PUT"
+                    }
+                  ],
+                  [
+                    ".",
+                    "POST Requests",
+                    {
+                      "label": "POST"
+                    }
+                  ],
+                  [
+                    ".",
+                    "DELETE Requests",
+                    {
+                      "label": "DELETE"
+                    }
+                  ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "stat": "Sum",
+                "period": 10,
+                "title": "Request Types Over Time"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 21,
+              "y": 6,
+              "width": 3,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [
+                    "Apache",
+                    "404 Errors",
+                    {
+                      "label": "Sum"
+                    }
+                  ]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "stat": "Sum",
+                "period": 3600,
+                "title": "Errors Today"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 12,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE 'apache/error' | fields @timestamp, @message\n| sort @timestamp desc\n| limit 20",
+                "region": "${AWS::Region}",
+                "stacked": false,
+                "view": "table",
+                "title": "20 Most Recent Errors"
+              }
+            }
           ]
         }
 
