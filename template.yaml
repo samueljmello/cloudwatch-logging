@@ -217,6 +217,27 @@ Resources:
                 sudo systemctl is-enabled httpd;
               cwd: "~"
               ignoreErrors: "false"
+            002ConfigureApache:
+              command: |
+                sudo cp -f /etc/httpd/conf/httpd.conf ~/httpd.back.conf
+                FILE="/etc/httpd/conf/httpd.conf";
+                ELOG='ErrorLog "logs\/error_log"';
+                ELOGREP='ErrorLog "\/var\/log\/www\/error\/error_log"';
+                ELOGFMT='ErrorLogFormat "{\\"time\\":\\"%{%usec_frac}t\\", \\"function\\" : \\"[%-m:%l]\\", \\"process\\" : \\"[pid%P]\\" ,\\"message\\" : \\"%M\\"}"';
+                CLOG='CustomLog "logs\/access_log" combined'
+                CLOGFMT='LogFormat "%h %l %u %t \\"%r\\" %>s %b" common';
+                CWLOG='CustomLog "\/var\/log\/www\/access\/access_log" cloudwatch';
+                CWLOGFMT='LogFormat "{ \\"time\\":\\"%{%Y-%m-%d}tT%{%T}t.%{msec_frac}tZ\\", \\"process\\":\\"%D\\", \\"filename\\":\\"%f\\", \\"remoteIP\\":\\"%a\\", \\"host\\":\\"%V\\", \\"request\\":\\"%U\\", \\"query\\":\\"%q\\",\\"method\\":\\"%m\\", \\"status\\":\\"%>s\\", \\"userAgent\\":\\"%{User-agent}i\\",\\"referer\\":\\"%{Referer}i\\"}" cloudwatch';
+                sed "s/${ELOG}/${ELOGREP}/g" ${FILE} |\
+                  sed "/${ELOGREP}/a ${ELOGFMT}" |\
+                  sed "s/${CLOGFMT}/${CWLOGFMT}/g" |\
+                  sed "/${CLOG}/a ${CWLOG}" |\
+                  sudo dd of=${FILE};
+                sudo mkdir -p /var/log/www/error;
+                sudo mkdir -p /var/log/www/access;
+                sudo systemctl restart httpd;
+              cwd: "~"
+              ignoreErrors: "false"
     Properties:
         ImageId: !Ref Image
         KeyName: !Ref PemKey

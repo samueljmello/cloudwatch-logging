@@ -38,6 +38,14 @@ aws cloudformation deploy \
 
 For both commands, you must replace the values above with values related to your environment. For parameter overrides, reference the template file "parameters" definition.
 
+## Post-Deployment
+Because two "associations" are used, a race condition exists. You will need to:
+
+1. Visit [AWS Systems Manager State Manager](https://console.aws.amazon.com/systems-manager/state-manager) and validate the 'CloudWatchAgentConfig' association successfully completed.
+2. If it is in a failed status:
+   1. Click the assoication ID to open the association.
+   2. Click "apply association now" to execute the comand, then confirm when prompted.
+
 ## Custom Deployment
 Here are the commands I used for copy & paste purposes (there are no sensitive values in here, and potentially sensitive values were ref'd by environment variables that I exported prior to running these).
 
