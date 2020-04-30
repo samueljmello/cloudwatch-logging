@@ -168,6 +168,10 @@ Resources:
                       "color": "#d62728",
                       "label": "404"
                     }
+                  ],
+                  [
+                    ".",
+                    "All Other Errors"
                   ]
                 ],
                 "view": "timeSeries",
@@ -297,11 +301,11 @@ Resources:
               "width": 24,
               "height": 6,
               "properties": {
-                "query": "SOURCE 'apache/error' | fields @timestamp, @message\n| sort @timestamp desc\n| limit 20",
+                "query": "SOURCE 'apache/error' | fields @timestamp, @message\n| sort @timestamp desc\n| limit 20\n| filter @message not like /(?i)(\\[autoindex:error\\])/",
                 "region": "${AWS::Region}",
                 "stacked": false,
-                "view": "table",
-                "title": "20 Most Recent Errors"
+                "title": "20 Most Recent Non-404 Errors",
+                "view": "table"
               }
             }
           ]
