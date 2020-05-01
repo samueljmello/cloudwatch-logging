@@ -18,7 +18,7 @@ fi
 
 # declare arrays for randomly selecting request structure
 declare -a METHODS=(GET PUT POST DELETE)
-declare -a ERROR_OR_NOT=(0 1)
+declare -a STATUSES=(NONE 404 500)
 
 # do until user aborts
 while [[ true ]]
@@ -27,12 +27,20 @@ do
     METHOD_NUM=$(( $RANDOM % ${#METHODS[@]} ))
     METHOD=${METHODS[$METHOD_NUM]}
 
+    # decide what kind of status to return
+    STATUS_NUM=$(( $RANDOM % ${#STATUSES[@]} ))
+    STATUS=${STATUSES[$STATUS_NUM]}
+
     # set up url
     URL="http://${HOST}"
 
-    # determine if error
-    if [[ $(( $RANDOM % ${#ERROR_OR_NOT[@]} )) == 1 ]]; then
-        URL="${URL}/404error"
+    # determine if 404
+    if [[ ${STATUS} == "404" ]]; then
+      URL="${URL}/404error" # file actually doesn't exist
+    elif [[ ${STATUS} == "500" ]]; then
+      URL="${URL}/500error.php" # file is a php error
+    else
+      URL="${URL}/index.html"
     fi
 
     # make curl request

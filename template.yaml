@@ -125,14 +125,41 @@ Resources:
         - MetricNamespace: Apache
           MetricName: DELETE Requests
           MetricValue: '1'
+  CloudWatchApacheError200MetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.status = "200" }'
+      LogGroupName: !Ref CloudWatchApacheAccessLogs
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: '200 Status'
+          MetricValue: '1'
+  CloudWatchApacheError500MetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.status = "500" }'
+      LogGroupName: !Ref CloudWatchApacheAccessLogs
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: '500 Errors'
+          MetricValue: '1'
   CloudWatchApacheError404MetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties: 
-      FilterPattern: '{ $.function = "[autoindex:error]" }'
-      LogGroupName: !Ref CloudWatchApacheErrorLogs
+      FilterPattern: '{ $.status = "404" }'
+      LogGroupName: !Ref CloudWatchApacheAccessLogs
       MetricTransformations: 
         - MetricNamespace: Apache
           MetricName: '404 Errors'
+          MetricValue: '1'
+  CloudWatchApacheError405MetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties: 
+      FilterPattern: '{ $.status = "405" }'
+      LogGroupName: !Ref CloudWatchApacheAccessLogs
+      MetricTransformations: 
+        - MetricNamespace: Apache
+          MetricName: '405 Errors'
           MetricValue: '1'
   CloudWatchApacheErrorOtherMetricFilter:
     Type: AWS::Logs::MetricFilter
@@ -141,7 +168,7 @@ Resources:
       LogGroupName: !Ref CloudWatchApacheErrorLogs
       MetricTransformations: 
         - MetricNamespace: Apache
-          MetricName: 'All Other Errors'
+          MetricName: 'All Core Errors'
           MetricValue: '1'
 
 
@@ -156,8 +183,8 @@ Resources:
             {
               "type": "metric",
               "x": 0,
-              "y": 6,
-              "width": 21,
+              "y": 12,
+              "width": 15,
               "height": 6,
               "properties": {
                 "metrics": [
@@ -165,19 +192,40 @@ Resources:
                     "Apache",
                     "404 Errors",
                     {
-                      "color": "#d62728",
-                      "label": "404"
+                      "color": "#7f7f7f",
+                      "label": "404 - Not Found"
                     }
                   ],
                   [
                     ".",
-                    "All Other Errors"
+                    "500 Errors",
+                    {
+                      "label": "500 - Server Error",
+                      "color": "#d62728"
+                    }
+                  ],
+                  [
+                    ".",
+                    "405 Errors",
+                    {
+                      "yAxis": "left",
+                      "color": "#ff7f0e",
+                      "label": "405 - Method Not Allowed"
+                    }
+                  ],
+                  [
+                    ".",
+                    "200 Status",
+                    {
+                      "color": "#2ca02c",
+                      "label": "200 - OK"
+                    }
                   ]
                 ],
                 "view": "timeSeries",
                 "stacked": true,
                 "region": "${AWS::Region}",
-                "title": "Errors Over Time",
+                "title": "Status Timeline",
                 "stat": "Sum",
                 "period": 10
               }
@@ -223,7 +271,7 @@ Resources:
                 "region": "${AWS::Region}",
                 "period": 86400,
                 "stat": "Sum",
-                "title": "Request Types Today"
+                "title": "Method Totals"
               }
             },
             {
@@ -268,14 +316,14 @@ Resources:
                 "region": "${AWS::Region}",
                 "stat": "Sum",
                 "period": 10,
-                "title": "Request Types Over Time"
+                "title": "Method Timeline"
               }
             },
             {
               "type": "metric",
-              "x": 21,
-              "y": 6,
-              "width": 3,
+              "x": 15,
+              "y": 12,
+              "width": 9,
               "height": 6,
               "properties": {
                 "metrics": [
@@ -283,7 +331,32 @@ Resources:
                     "Apache",
                     "404 Errors",
                     {
-                      "label": "Sum"
+                      "color": "#7f7f7f",
+                      "label": "404"
+                    }
+                  ],
+                  [
+                    ".",
+                    "500 Errors",
+                    {
+                      "color": "#d62728",
+                      "label": "500"
+                    }
+                  ],
+                  [
+                    ".",
+                    "405 Errors",
+                    {
+                      "color": "#ff7f0e",
+                      "label": "405"
+                    }
+                  ],
+                  [
+                    ".",
+                    "200 Status",
+                    {
+                      "color": "#2ca02c",
+                      "label": "200"
                     }
                   ]
                 ],
@@ -291,20 +364,34 @@ Resources:
                 "region": "${AWS::Region}",
                 "stat": "Sum",
                 "period": 3600,
-                "title": "Errors Today"
+                "title": "Status Totals"
               }
             },
             {
               "type": "log",
               "x": 0,
-              "y": 12,
+              "y": 18,
               "width": 24,
               "height": 6,
               "properties": {
-                "query": "SOURCE 'apache/error' | fields @timestamp, @message\n| sort @timestamp desc\n| limit 20\n| filter @message not like /(?i)(\\[autoindex:error\\])/",
+                "query": "SOURCE 'apache/error' | fields time, function, message\n| sort time desc\n| limit 20",
                 "region": "${AWS::Region}",
                 "stacked": false,
-                "title": "20 Most Recent Non-404 Errors",
+                "title": "Last 20 Error Log Entries",
+                "view": "table"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE 'apache/access' | fields time, method, remoteIP, request, status, host, userAgent\n| sort time desc\n| limit 20",
+                "region": "${AWS::Region}",
+                "stacked": false,
+                "title": "20 Most Recent Requests",
                 "view": "table"
               }
             }
@@ -500,6 +587,8 @@ Resources:
                 - sudo mkdir -p /var/log/www/error
                 - sudo mkdir -p /var/log/www/access
                 - sudo systemctl restart httpd
+                - echo "success" | sudo dd of=/var/www/html/index.html
+                - echo '<?php throw new Exception("Nooooooooooooooo!"); ?>' | sudo dd of=/var/www/html/500error.php
           - name: ConfigureCloudWatch
             description: Configures the CloudWatch agent using the document 'AmazonCloudWatch-ManageAgent'.
             action: aws:runDocument
@@ -524,3 +613,9 @@ Resources:
         - Key: InstanceIds
           Values: 
             - !Ref Ec2CloudWatchInstance
+
+# Establish outputs
+Outputs:
+  ApacheServerHost:
+    Description: The DNS name of the Apache server created (for use in generating traffic)
+    Value: !GetAtt Ec2CloudWatchInstance.PublicDnsName
