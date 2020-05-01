@@ -54,9 +54,8 @@ First, a CloudFormation package must be created with:
 
 ```
 aws cloudformation package \
-    --profile "<profile>" \
-    --s3-bucket "<s3-bucket>" \
-    --template-file "<template-file>" \
+    --s3-bucket "<your-s3-bucket>" \
+    --template-file "output/plan" \
     --output-template-file "<output-file>"
 ```
 
@@ -64,14 +63,13 @@ And then the CloudFormation deployment must be triggered with:
 
 ```
 aws cloudformation deploy \
-    --profile "<profile>" \
-    --template-file "<output-file>" \
+    --template-file "output/plan" \
     --stack-name "<stack-name"> \
     --capabilities CAPABILITY_IAM \
-    --parameter-overrides "<override-item>"
+    --parameter-overrides "PemKey=<key-name>" "MyIp=<ip-address>"
 ```
 
-For both commands, you must replace the values above with values related to your environment. For parameter overrides, reference the template file "parameters" definition.
+For both commands, you must replace the ```<values>``` above with values related to your environment. For parameter overrides, reference the template file "parameters" definition.
 
 ---
 
